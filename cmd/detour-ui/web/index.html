@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Detour</title>
+<style>
+/* Windows 11 Fluent-lite. Follows system dark/light automatically. */
+:root{
+  --card:#ffffffcc; --card-b:#e6e6e6; --bg1:#f3f3f3; --bg2:#e9e9f6;
+  --text:#1a1a1a; --text2:#5c5c66; --accent:#4f5be8; --accent2:#7a84f0;
+  --ok:#0f9d58; --warn:#c1760e; --err:#c42b1c; --radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --card:#2c2c34cc; --card-b:#3a3a44; --bg1:#202024; --bg2:#1a1a1f;
+    --text:#f2f2f6; --text2:#a2a2ae; --accent:#7a84f0; --accent2:#9aa2f5;
+    --ok:#4cc38a; --warn:#f3b73c; --err:#ff99a4;
+  }
+}
+*{box-sizing:border-box; -webkit-user-select:none; user-select:none}
+body{
+  margin:0; font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  color:var(--text); font-size:14px; line-height:1.45;
+  background:linear-gradient(160deg,var(--bg1),var(--bg2)); min-height:100vh;
+}
+main{max-width:760px; margin:0 auto; padding:18px 20px 90px}
+h1{font-size:17px; font-weight:600; margin:0}
+.muted{color:var(--text2)}
+.card{background:var(--card); border:1px solid var(--card-b); border-radius:var(--radius);
+  padding:14px 16px; margin-top:12px; backdrop-filter:blur(24px);
+  transition:transform .12s ease, box-shadow .12s ease}
+.card:hover{box-shadow:0 2px 10px #0002}
+.row{display:flex; align-items:center; gap:12px}
+.spacer{flex:1}
+button,.sel,.search{
+  font:inherit; color:inherit; background:var(--card); border:1px solid var(--card-b);
+  border-radius:8px; padding:7px 12px; cursor:pointer; outline:none;
+}
+button:hover{background:var(--accent); border-color:var(--accent); color:#fff}
+button.primary{background:var(--accent); color:#fff; border-color:var(--accent)}
+button.primary:hover{background:var(--accent2)}
+button:disabled{opacity:.5; cursor:default}
+button.icon{padding:6px 10px; font-size:15px}
+/* header */
+header{position:sticky; top:0; z-index:5; padding:12px 20px; backdrop-filter:blur(24px);
+  background:var(--card); border-bottom:1px solid var(--card-b)}
+header .row{gap:14px}
+/* master switch */
+.switch{position:relative; width:46px; height:24px; flex:none}
+.switch input{opacity:0; width:0; height:0}
+.slider{position:absolute; inset:0; border-radius:12px; background:#8a8a95; transition:.18s}
+.slider:before{content:""; position:absolute; width:16px; height:16px; border-radius:8px;
+  left:4px; top:4px; background:#fff; transition:.18s}
+input:checked + .slider{background:var(--accent)}
+input:checked + .slider:before{transform:translateX(22px)}
+input:disabled + .slider{opacity:.4}
+.pill{font-size:12px; padding:2px 9px; border-radius:10px; background:#8884; color:var(--text)}
+.pill.on{background:var(--ok); color:#fff}
+.pill.off{background:#9aa}
+/* connection cards */
+.dot{width:9px; height:9px; border-radius:5px; background:#9aa; flex:none}
+.dot.up{background:var(--ok)} .dot.down{background:var(--err)}
+.badge{font-size:11px; color:var(--text2); border:1px solid var(--card-b); border-radius:6px; padding:1px 7px}
+select.sel{min-width:180px}
+.speed{font-variant-numeric:tabular-nums; font-size:12px; color:var(--text2); min-width:110px; text-align:right}
+/* exceptions */
+.appicon{width:30px; height:30px; border-radius:7px; flex:none; display:grid; place-items:center;
+  background:var(--accent); color:#fff; font-weight:700; font-size:14px}
+.appicon.unknown{background:#6c757d; font-size:16px}
+.appicon img{width:28px; height:28px; border-radius:6px}
+.list{display:flex; flex-direction:column; gap:6px}
+.item{display:flex; gap:12px; align-items:center; padding:9px 10px; border-radius:8px; background:#0000}
+.item:hover{background:#0000000a}
+.search{width:100%; margin:8px 0 4px}
+.addrow{display:flex; gap:8px; margin-top:10px}
+/* overlays */
+.overlay{position:fixed; inset:0; display:none; place-items:center; z-index:20;
+  background:var(--bg1); padding:24px}
+.overlay.show{display:grid}
+.overlay .card{max-width:460px}
+.screens h2{margin:0 0 8px}
+.err{color:var(--err)}
+.note{font-size:12px; color:var(--text2)}
+kbd{font:inherit; background:#8882; padding:0 6px; border-radius:4px}
+.toast{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:30;
+  background:var(--card); border:1px solid var(--card-b); padding:8px 16px;
+  border-radius:18px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90%; text-align:center}
+.toast.show{opacity:1}
+footer{position:fixed; bottom:0; left:0; right:0; padding:10px 20px; font-size:12px;
+  color:var(--text2); background:linear-gradient(0deg,var(--bg1) 60%,transparent)}
+footer .row{gap:10px}
+.adv{font-size:12px; color:var(--text2); word-break:break-all; display:none}
+details summary{cursor:pointer; color:var(--text2); font-size:12px}
+</style>
+</head>
+<body>
+
+<!-- Service unreachable state (never a blank window) -->
+<div id="downOverlay" class="overlay">
+  <div class="card">
+    <h2>Detour's engine isn't running</h2>
+    <p id="downText">The background service that routes apps is not reachable right now. Nothing was changed.</p>
+    <div class="row">
+      <button id="btnFix" class="primary">Try again</button>
+      <span id="downHint" class="muted"></span>
+    </div>
+  </div>
+</div>
+
+<!-- First run (screen 1 of max 2: pick the main connection, then done) -->
+<div id="firstRun" class="overlay screens">
+  <div class="card">
+    <h2>Welcome to Detour</h2>
+    <p class="muted">Choose what <b>everything</b> uses to reach the internet. You can add app exceptions any time.</p>
+    <div class="row" style="margin-top:10px">
+      <select id="frConn" class="sel"></select>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="frDone" class="primary">Done</button>
+      <span id="frHint" class="muted"></span>
+    </div>
+    <p class="note" style="margin-top:10px">Changing this later is in the card below. Apps you pin follow <b>new</b> connections right away; apps already connected keep their current connection until they reconnect.</p>
+  </div>
+</div>
+
+<header>
+  <div class="row">
+    <label class="switch" title="Route apps through Detour">
+      <input type="checkbox" id="master"><span class="slider"></span>
+    </label>
+    <div>
+      <h1>Detour</h1>
+      <div id="statusLine" class="muted">…</div>
+    </div>
+    <div class="spacer"></div>
+    <span id="masterPill" class="pill off">Off</span>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="row">
+      <div>
+        <div>Everything uses</div>
+        <div><select id="mainConn" class="sel"></select></div>
+      </div>
+      <div class="spacer"></div>
+      <div>
+        <div>If it goes down</div>
+        <div>
+          <select id="mainPolicy" class="sel">
+            <option value="fallback">Switch to the other connection</option>
+            <option value="block">Block (wait for it to return)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <p class="note" id="mainNote" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="card" id="connCards">
+    <div class="muted" style="margin-bottom:4px">Connections</div>
+    <div id="connList" class="list"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>Exceptions - apps that use something else</div>
+      <div class="spacer"></div>
+      <button id="btnAdd" class="icon">＋ Add app</button>
+    </div>
+    <input id="search" class="search" placeholder="Search apps…">
+    <div id="exceptionList" class="list"></div>
+    <div id="addPicker" style="display:none">
+      <div class="row" style="margin-top:6px">
+        <input id="addSearch" class="search" placeholder="Running apps…" style="margin:0">
+        <button id="btnAddClose" class="icon">✕</button>
+      </div>
+      <div id="runningList" class="list" style="max-height:200px; overflow:auto"></div>
+      <button id="btnBrowse" style="margin-top:8px">Browse for an .exe…</button>
+    </div>
+    <p class="note" id="exNote" style="margin:8px 0 0">Rule changes apply to <b>new</b> app connections right away.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="row">
+    <label class="row" style="gap:6px"><input type="checkbox" id="autoStart"> Start when I sign in</label>
+    <span class="spacer"></span>
+    <details><summary>Advanced</summary><div id="advInfo"></div></details>
+  </div>
+</footer>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const fmtB = (n) => {
+  if (n == null) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n/1024).toFixed(1) + " KB";
+  return (n/1048576).toFixed(1) + " MB";
+};
+const fmtRate = (bps) => {
+  if (bps == null || bps <= 0) return "";
+  if (bps < 1024) return bps.toFixed(0) + " B/s";
+  if (bps < 1048576) return (bps/1024).toFixed(0) + " KB/s";
+  return (bps/1048576).toFixed(1) + " MB/s";
+};
+
+const state = {
+  on:false, serviceUp:false, adapters:[], rules:{}, settings:{}, engineOnStored:false,
+  lastGroups:{}, boot:true, firstRunDone:false, appRates:{}
+};
+
+// Plain-language error translation: never swallow errors; show clear, friendly text.
+function toPlainError(err){
+  const s = (err && err.message) || String(err || "");
+  if (/pipe|not reachable|cannot find the file|access is denied/i.test(s)){
+    return "Detour service is not reachable. Please start the service.";
+  }
+  if (/already running/i.test(s)){
+    return "The Detour engine is already running.";
+  }
+  if (/open TUN|wintun/i.test(s)){
+    return "Could not initialize virtual adapter. Ensure Wintun is installed.";
+  }
+  if (/capture routes/i.test(s)){
+    return "Could not update network routes. Another VPN or firewall may be conflicting.";
+  }
+  if (/not found/i.test(s)){
+    return "The requested adapter or rule was not found.";
+  }
+  if (/app and adapter are required/i.test(s)){
+    return "Both application name and connection are required.";
+  }
+  return s || "An unexpected error occurred.";
+}
+
+function rpc(method, params){
+  return goRPC(JSON.stringify({method, params: params === undefined ? null : params}))
+    .then(r => {
+      if (!r.ok) {
+        const plain = toPlainError(r.error);
+        throw new Error(plain);
+      }
+      return r.data;
+    });
+}
+
+function toast(msg){
+  if (!msg) return;
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+function adapterTypeIcon(a){
+  if (/wi-?fi|wireless/i.test(a.name)) return "📶";
+  if (a.isTunnel) return "🔒";
+  if (/bluetooth/i.test(a.name)) return "🔵";
+  if (/ethernet|local area/i.test(a.name)) return "🔌";
+  return "🌐";
+}
+
+const nm = (a) => a && a.name && String(a.name) || "(unnamed adapter)";
+
+function renderHeader(){
+  $("master").checked = state.on;
+  $("master").disabled = !state.serviceUp;
+  const pill = $("masterPill");
+  pill.className = "pill " + (state.on ? "on" : "off");
+  pill.textContent = state.on ? "On" : "Off";
+  const main = state.settings.mainConnectionMode || state.settings.mainConnection || "auto";
+  let line;
+  if (!state.on) line = "Routing is off : every app uses Windows' default connection.";
+  else if (!main || main === "auto") line = "Everything uses " + (state.automaticName || "Windows' default connection") + ".";
+  else line = "Everything uses " + main + ".";
+  $("statusLine").textContent = line;
+}
+
+function mainCandidates(){
+  return state.adapters.filter(a => a.operUp && a.hasV4Gateway && !a.isTunnel);
+}
+
+// Track currently focused/open select to preserve DOM nodes across ticks and defer hot-plug rebuilds.
+let focusedSelect = null;
+let pendingAdaptersUpdate = false;
+
+document.addEventListener("focusin", (ev) => {
+  if (ev.target && ev.target.tagName === "SELECT") {
+    focusedSelect = ev.target;
+  }
+});
+
+document.addEventListener("focusout", (ev) => {
+  if (ev.target && ev.target.tagName === "SELECT") {
+    if (focusedSelect === ev.target) {
+      focusedSelect = null;
+      if (pendingAdaptersUpdate) {
+        pendingAdaptersUpdate = false;
+        renderMainCard();
+        renderExceptions();
+      }
+    }
+  }
+});
+
+function renderMainCard(){
+  const sel = $("mainConn");
+  const cands = mainCandidates();
+  const opts = [["auto", "Windows' default (automatic)"]].concat(cands.map(a => [a.name, a.name]));
+  const ser = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
+  
+  const userBusy = (document.activeElement === sel || focusedSelect === sel);
+  if (!userBusy && sel.dataset.sig !== opts.map(o => o[0]).join(",")){
+    sel.innerHTML = ser;
+    sel.dataset.sig = opts.map(o => o[0]).join(",");
+  }
+  if (!userBusy){
+    const cur = state.settings.mainConnection || "auto";
+    const target = cands.some(a => a.name === cur) ? cur : "auto";
+    if (sel.value !== target) sel.value = target;
+    sel.disabled = !state.serviceUp;
+  }
+  const pol = $("mainPolicy");
+  const polBusy = (document.activeElement === pol || focusedSelect === pol);
+  if (!polBusy){
+    const pv = state.settings.mainDownPolicy || "fallback";
+    if (pol.value !== pv) pol.value = pv;
+    pol.disabled = !state.serviceUp;
+  }
+  if (cands.length === 1) $("mainNote").textContent = "Detour found one connection (" + cands[0].name + "). Add another connection to route apps separately.";
+  else if (cands.length === 0) $("mainNote").textContent = "No internet connection found right now. Plug in or connect to Wi-Fi and this updates automatically.";
+  else $("mainNote").textContent = "New app connections follow this instantly. Apps already connected keep their connection until they reconnect.";
+}
+
+function renderConnections(){
+  const rows = state.adapters
+    .filter(a => !a.isTunnel)
+    .map(a => {
+      const up = a.operUp && a.hasV4Gateway;
+      return `<div class="item row">
+        <span>${adapterTypeIcon(a)}</span>
+        <span class="dot ${up ? "up" : "down"}" title="${up ? "Connected to the internet" : "No internet on this connection"}"></span>
+        <span>${nm(a)}</span>
+        <span class="badge">${up ? "Internet" : "Offline"}</span>
+        <span class="spacer"></span>
+        <span class="speed" id="k_${a.name}">${(state.speed && state.speed[a.name]) ? fmtRate(state.speed[a.name]) : ""}</span>
+      </div>`;
+    });
+  $("connList").innerHTML = rows.join("") || '<span class="muted">No connections found.</span>';
+}
+
+function ruleLabel(adapter){
+  if (!adapter) return "Main connection";
+  if (adapter === "(block)") return "Blocked";
+  return adapter;
+}
+
+// In-place row updates in exception list: preserves DOM nodes of open/focused selects.
+function renderExceptions(){
+  const listEl = $("exceptionList");
+  const q = $("search").value.trim().toLowerCase();
+  const groups = state.groups || {};
+  const names = new Set(Object.keys(state.rules));
+  Object.entries(groups).forEach(([app, _g]) => names.add(app));
+  const cands = mainCandidates();
+  const candsSig = cands.map(a => a.name).join(",");
+
+  const filtered = [...names].filter(n => !q || n.toLowerCase().includes(q)).sort((a,b) => {
+    // Keep 'unknown' at the bottom of the list
+    if (a === "unknown") return 1;
+    if (b === "unknown") return -1;
+    return a.localeCompare(b);
+  });
+
+  // Track existing DOM rows
+  const existingRows = new Map();
+  listEl.querySelectorAll("[data-app-row]").forEach(el => {
+    existingRows.set(el.getAttribute("data-app-row"), el);
+  });
+
+  // Remove rows no longer present
+  existingRows.forEach((el, app) => {
+    if (!filtered.includes(app)){
+      el.remove();
+      existingRows.delete(app);
+    }
+  });
+
+  if (filtered.length === 0){
+    listEl.innerHTML = '<span class="muted" style="padding:6px">No exceptions yet - everything uses the main connection.</span>';
+    return;
+  }
+
+  // Remove placeholder if present
+  const placeholder = listEl.querySelector("span.muted");
+  if (placeholder) placeholder.remove();
+
+  filtered.forEach(app => {
+    const r = state.rules[app];
+    const rates = state.appRates[app] || {up:0, down:0};
+    const rateStr = (rates.up > 0 || rates.down > 0) ? (fmtRate(rates.up) + " ↑ " + fmtRate(rates.down) + " ↓") : "";
+
+    let rowEl = existingRows.get(app);
+    if (!rowEl){
+      // Create new row
+      rowEl = document.createElement("div");
+      rowEl.className = "item row";
+      rowEl.setAttribute("data-app-row", app);
+
+      if (app === "unknown"){
+        // Polished 'unknown' label row
+        rowEl.innerHTML = `
+          <span class="appicon unknown" title="System background traffic">⚙</span>
+          <div>
+            <div>Unidentified background traffic</div>
+            <div class="note">System & DNS - follows main connection</div>
+          </div>
+          <span class="spacer"></span>
+          <span class="badge">Main connection</span>
+          <span class="speed">${rateStr}</span>
+        `;
+      } else {
+        const cur = (r && r.adapter) || "";
+        const dl = r && r.down_policy === "block";
+        rowEl.innerHTML = `
+          <span class="appicon" data-app="${app}">${app[0].toUpperCase()}</span>
+          <span>${app}</span>
+          <span class="spacer"></span>
+          <select class="sel" data-uses="${app}" style="max-width:170px">
+            <option value="">Main connection</option>
+            ${cands.map(a => `<option value="${a.name}">${a.name}</option>`).join("")}
+          </select>
+          <select class="sel" data-dp="${app}" style="max-width:150px">
+            <option value="automatic">If it's down: use main</option>
+            <option value="block">If it's down: block</option>
+          </select>
+          <span class="speed">${rateStr}</span>
+          <button class="icon" data-del="${app}" title="Remove exception">✕</button>
+        `;
+        const usesSel = rowEl.querySelector(`[data-uses="${app}"]`);
+        const dpSel = rowEl.querySelector(`[data-dp="${app}"]`);
+        if (usesSel) usesSel.value = cur;
+        if (dpSel){
+          dpSel.value = dl ? "block" : "automatic";
+          dpSel.disabled = !cur;
+        }
+      }
+      listEl.appendChild(rowEl);
+      if (app !== "unknown"){
+        goAppIcon(app).then(res => {
+          if (res && res.ok && res.dataUrl){
+            const iconEl = rowEl.querySelector(".appicon");
+            if (iconEl) iconEl.innerHTML = `<img src="${res.dataUrl}">`;
+          }
+        });
+      }
+    } else {
+      // Row exists: update speed and selects in place without destroying DOM node
+      const speedEl = rowEl.querySelector(".speed");
+      if (speedEl && speedEl.textContent !== rateStr) speedEl.textContent = rateStr;
+
+      if (app !== "unknown"){
+        const usesSel = rowEl.querySelector(`[data-uses="${app}"]`);
+        const dpSel = rowEl.querySelector(`[data-dp="${app}"]`);
+        const cur = (r && r.adapter) || "";
+        const dl = r && r.down_policy === "block";
+
+        if (usesSel && document.activeElement !== usesSel && focusedSelect !== usesSel){
+          if (usesSel.dataset.sig !== candsSig){
+            usesSel.innerHTML = `<option value="">Main connection</option>` + cands.map(a => `<option value="${a.name}">${a.name}</option>`).join("");
+            usesSel.dataset.sig = candsSig;
+          }
+          if (usesSel.value !== cur) usesSel.value = cur;
+        }
+
+        if (dpSel && document.activeElement !== dpSel && focusedSelect !== dpSel){
+          dpSel.disabled = !cur;
+          const targetDp = dl ? "block" : "automatic";
+          if (dpSel.value !== targetDp) dpSel.value = targetDp;
+        }
+      }
+    }
+  });
+}
+
+function renderAdvanced(){
+  const cands = state.adapters.filter(a => !a.isTunnel);
+  $("advInfo").innerHTML = cands.map(a =>
+    `<div>${a.name}: GUID ${a.guid || "(none)"} : metric ${a.v4metric != null ? a.v4metric : "-"}${a.ip ? " : IP " + a.ip : ""}</div>`
+  ).join("");
+}
+
+function renderAll(){
+  renderHeader(); renderMainCard(); renderConnections(); renderExceptions(); renderAdvanced();
+  $("btnAdd").disabled = !state.serviceUp;
+}
+
+async function subscribe(){
+  const sr = await goGetStartWithWindows();
+  $("autoStart").checked = !!(sr && sr.ok && sr.enabled);
+}
+
+async function refreshAll(){
+  try {
+    const [status, settings, adapters, rules] = await Promise.all([
+      rpc("status.get"), rpc("settings.get"), rpc("adapters.list"), rpc("rules.list")
+    ]);
+    state.serviceUp = true;
+    $("downOverlay").classList.remove("show");
+    state.on = !!(status && status.on);
+    if (status && status.automatic) state.automaticName = status.automatic.name;
+    state.groups = snapshotGroups(status && status.stats);
+    state.settings = (settings && settings.settings) || {};
+    state.engineOnStored = !!(settings && settings.engineOn);
+    state.adapters = (adapters || []);
+    state.rules = rules || {};
+    renderAll();
+    if (state.boot){ state.boot = false; maybeFirstRun(); }
+  } catch (e) {
+    state.serviceUp = false;
+    $("downText").textContent = "The background service that routes apps is not reachable right now. Nothing was changed. (" + toPlainError(e) + ")";
+    $("downOverlay").classList.add("show");
+    $("downHint").textContent = "";
+    renderHeader();
+  }
+}
+
+function snapshotGroups(stats){
+  const out = {};
+  if (stats && stats.groups) stats.groups.forEach(g => {
+    out[g.app] = {up:g.up, down:g.down};
+  });
+  return out;
+}
+
+function maybeFirstRun(){
+  if (mainCandidates().length >= 2 && !state.engineOnStored && Object.keys(state.rules).length === 0){
+    const sel = $("frConn");
+    sel.innerHTML = mainCandidates().map(a => `<option value="${a.name}">${a.name}</option>`).join("");
+    $("firstRun").classList.add("show");
+  }
+}
+
+$("frDone").onclick = async () => {
+  const v = $("frConn").value;
+  try {
+    await rpc("settings.set", {main_connection: v, main_down_policy: "fallback"});
+    toast("All set : everything uses " + v + ".");
+  } catch (e) { toast(toPlainError(e)); }
+  $("firstRun").classList.remove("show");
+  refreshAll();
+};
+
+$("master").onchange = async (ev) => {
+  const want = ev.target.checked;
+  $("master").disabled = true;
+  try {
+    await rpc(want ? "engine.on" : "engine.off");
+    toast(want ? "Detour engine turned on." : "Detour engine turned off.");
+  } catch (e) {
+    toast(toPlainError(e));
+  }
+  refreshAll();
+};
+
+$("mainConn").onchange = async (ev) => {
+  try {
+    await rpc("settings.set", {main_connection: ev.target.value});
+    toast(state.on ? "Now everything uses " + (ev.target.value === "auto" ? "Windows' default connection" : ev.target.value) + " for new connections." : "Saved.");
+  } catch (e) { toast(toPlainError(e)); }
+  refreshAll();
+};
+
+$("mainPolicy").onchange = async (ev) => {
+  try {
+    await rpc("settings.set", {main_down_policy: ev.target.value});
+    toast("Down policy updated to " + ev.target.value + ".");
+  } catch (e) { toast(toPlainError(e)); }
+};
+
+$("btnFix").onclick = () => { refreshAll(); };
+$("autoStart").onchange = (ev) => {
+  goStartWithWindows(ev.target.checked).then(r => { if (!r.ok) toast(toPlainError(r.error)); });
+};
+
+$("search").oninput = () => renderExceptions();
+
+$("btnAdd").onclick = async () => {
+  $("addPicker").style.display = "block";
+  const r = await goRunningApps();
+  runningAppsCache = (r && r.ok && r.apps) || [];
+  renderRunning($("addSearch").value);
+};
+$("btnAddClose").onclick = () => { $("addPicker").style.display = "none"; };
+$("addSearch").oninput = (ev) => renderRunning(ev.target.value);
+
+let runningAppsCache = [];
+function renderRunning(q){
+  q = (q || "").trim().toLowerCase();
+  $("runningList").innerHTML = runningAppsCache
+    .filter(a => !q || a.name.toLowerCase().includes(q))
+    .slice(0, 60)
+    .map(a => `<div class="item row">
+      <span class="appicon">${a.name[0].toUpperCase()}</span>
+      <span>${a.name}</span><span class="spacer"></span>
+      <button class="icon" data-add="${a.name}">＋</button>
+    </div>`).join("");
+  document.querySelectorAll("[data-add]").forEach(b => b.onclick = () => addException(b.getAttribute("data-add")));
+}
+async function addException(app){
+  $("addPicker").style.display = "none";
+  const cands = mainCandidates();
+  const defaultAdapter = cands.length > 0 ? cands[0].name : "Wi-Fi";
+  try {
+    await rpc("rules.set", {app, adapter: defaultAdapter, down_policy: "automatic"});
+    toast(app + " keeps its next connections on " + defaultAdapter + ".");
+  } catch (e) { toast(toPlainError(e)); }
+  refreshAll();
+}
+
+document.addEventListener("change", (ev) => {
+  const t = ev.target;
+  const uses = t.getAttribute && t.getAttribute("data-uses");
+  const dp = t.getAttribute && t.getAttribute("data-dp");
+  if (uses){
+    if (!t.value){
+      rpc("rules.delete", {app: uses})
+        .then(() => toast(uses + " now uses the main connection again."))
+        .catch(e => toast(toPlainError(e)));
+      return;
+    }
+    const dpVal = (document.querySelector(`[data-dp="${uses}"]`)||{}).value || "automatic";
+    rpc("rules.set", {app: uses, adapter: t.value, down_policy: dpVal})
+      .then(() => toast(uses + " will keep its next connections on " + ruleLabel(t.value) + "."))
+      .catch(e => toast(toPlainError(e)));
+  } else if (dp){
+    const adapter = (state.rules[dp]||{}).adapter || "";
+    if (!adapter){ t.disabled = true; return; }
+    rpc("rules.set", {app: dp, adapter, down_policy: t.value})
+      .then(() => toast(dp + " down policy set to " + t.value + "."))
+      .catch(e => toast(toPlainError(e)));
+  }
+});
+
+document.addEventListener("click", (ev) => {
+  const del = ev.target.getAttribute && ev.target.getAttribute("data-del");
+  if (del) {
+    rpc("rules.delete", {app: del})
+      .then(() => {
+        toast("Removed exception for " + del + ".");
+        refreshAll();
+      })
+      .catch(e => toast(toPlainError(e)));
+  }
+});
+
+// Event stream bridge
+window.__onEvent = function(ev){
+  if (ev.type === "_unreachable"){
+    state.serviceUp = false;
+    $("downText").textContent = "The background service that routes apps is not reachable right now. Nothing was changed. You can start it again below." + (ev.detail ? " (" + ev.detail + ")" : "");
+    $("downOverlay").classList.add("show");
+    renderHeader();
+    return;
+  }
+  if (ev.type === "_connected"){
+    if (!state.serviceUp){ state.serviceUp = true; $("downOverlay").classList.remove("show"); }
+    return;
+  }
+  switch (ev.type){
+    case "engine_state": state.on = !!(ev.data && ev.data.on); renderHeader(); refreshAll(); break;
+    case "rules": state.rules = ev.data || {}; renderExceptions(); break;
+    case "settings": state.settings = ev.data || {}; renderMainCard(); renderHeader(); break;
+    case "adapters":
+      state.adapters = ev.data || [];
+      renderConnections();
+      renderAdvanced();
+      if (focusedSelect) {
+        pendingAdaptersUpdate = true; // Apply after open select closes
+      } else {
+        renderMainCard();
+        renderExceptions();
+      }
+      break;
+    case "automatic":
+      state.automaticName = (ev.data && ev.data.name) || state.automaticName;
+      if (state.lastAuto && state.lastAuto !== state.automaticName && state.on)
+        toast("Windows changed the main connection to " + state.automaticName + ".");
+      state.lastAuto = state.automaticName;
+      renderHeader();
+      break;
+    case "status":
+      consumeStatusDeltas(ev.data);
+      renderConnections();
+      renderExceptions();
+      consumeKernel(ev.data);
+      break;
+    case "policy_block": toast("The main connection is down and the app is blocked until it returns."); break;
+  }
+};
+
+// Calculate live per-tick speeds for exceptions
+let prevAppStats = null, prevAppTime = null;
+function consumeStatusDeltas(stats){
+  if (!stats) return;
+  state.groups = snapshotGroups(stats);
+  const now = stats.at ? Date.parse(stats.at) : Date.now();
+  if (prevAppStats && stats.groups){
+    const dt = Math.max(0.001, (now - prevAppTime) / 1000);
+    state.appRates = {};
+    stats.groups.forEach(g => {
+      const p = prevAppStats[g.app];
+      if (p){
+        const dUp = Math.max(0, g.up - p.up) / dt;
+        const dDown = Math.max(0, g.down - p.down) / dt;
+        state.appRates[g.app] = {up: dUp, down: dDown};
+      }
+    });
+  }
+  const curMap = {};
+  if (stats.groups) stats.groups.forEach(g => curMap[g.app] = {up:g.up, down:g.down});
+  prevAppStats = curMap;
+  prevAppTime = now;
+}
+
+// KernelCounters deltas for connection speeds
+let prevKernel = null, prevAt = null;
+function consumeKernel(stats){
+  if (!stats || !stats.kernel) return;
+  const at = stats.at ? Date.parse(stats.at) : Date.now();
+  if (prevKernel){
+    const dt = Math.max(0.001, (at - prevAt) / 1000);
+    state.speed = {};
+    stats.kernel.forEach(k => {
+      const p = prevKernel.find(x => x.adapter === k.adapter);
+      if (!p) return;
+      const dIn = Math.max(0, k.in - p.in), dOut = Math.max(0, k.out - p.out);
+      state.speed[k.adapter] = dIn > 0 ? dIn/dt : (dOut > 0 ? dOut/dt : 0);
+    });
+    renderConnections();
+  }
+  prevKernel = stats.kernel.map(k => ({adapter:k.adapter, in:k.in, out:k.out}));
+  prevAt = at;
+}
+
+// Automated UI Selftest
+window.__runDOMSelftest = async function(){
+  const log = [];
+  try {
+    // Wait for service connection
+    for (let i = 0; i < 20 && !state.serviceUp; i++){
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (!state.serviceUp) throw new Error("Service not connected during selftest");
+
+    // 1. Verify 20 event ticks keep open select's DOM node
+    const sel = $("mainConn");
+    sel.focus();
+    focusedSelect = sel;
+    const testMarker = "TEST_NODE_" + Date.now();
+    sel._selftestMarker = testMarker;
+
+    let preservedCount = 0;
+    for (let tick = 1; tick <= 20; tick++){
+      // Simulate status tick
+      window.__onEvent({
+        type: "status",
+        data: {
+          at: new Date().toISOString(),
+          groups: [{app: "selftest-bg.exe", adapter: "Ethernet", up: tick * 1000, down: tick * 2000}]
+        }
+      });
+      // Simulate adapters tick
+      window.__onEvent({
+        type: "adapters",
+        data: state.adapters
+      });
+
+      const currentSel = $("mainConn");
+      if (currentSel === sel && currentSel._selftestMarker === testMarker){
+        preservedCount++;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+    focusedSelect = null;
+    sel.blur();
+
+    if (preservedCount !== 20){
+      throw new Error(`Select DOM node replaced! Preserved ${preservedCount}/20 ticks`);
+    }
+    log.push({step: "dom_select_stability", pass: true, ticks: preservedCount});
+
+    // 2. Set an exception, rules.list shows it
+    const cands = mainCandidates();
+    const testAdapter = cands.length > 0 ? cands[0].name : "Ethernet";
+    await rpc("rules.set", {app: "detour-selftest.exe", adapter: testAdapter, down_policy: "automatic"});
+    const rulesAfterSet = await rpc("rules.list");
+    if (!rulesAfterSet || !rulesAfterSet["detour-selftest.exe"] || rulesAfterSet["detour-selftest.exe"].adapter !== testAdapter){
+      throw new Error("rules.list does not show the added exception");
+    }
+    log.push({step: "rule_set_verified", pass: true, app: "detour-selftest.exe", adapter: testAdapter});
+
+    // 3. Choose "Main connection", rules.list shows none
+    await rpc("rules.delete", {app: "detour-selftest.exe"});
+    const rulesAfterDel = await rpc("rules.list");
+    if (rulesAfterDel && rulesAfterDel["detour-selftest.exe"]){
+      throw new Error("rules.list still contains the exception after choosing Main connection");
+    }
+    log.push({step: "rule_delete_verified", pass: true});
+
+    return {ok: true, log};
+  } catch (err){
+    return {ok: false, error: err.message, log};
+  }
+};
+
+setInterval(() => { if (state.serviceUp) refreshAll(); }, 5000);
+refreshAll();
+subscribe();
+</script>
+</body>
+</html>

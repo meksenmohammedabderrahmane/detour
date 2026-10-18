@@ -1,0 +1,17 @@
+# build artifacts (fetched/built locally: scripts/fetch-wintun.ps1 + go build)
+_dist/
+*.exe
+wintun.dll
+wintun-LICENSE.txt
+
+# Go tool churn
+*.test
+*.out
+
+# engine snapshot state (machine-local)
+*.tmp
+*.log
+
+# local helper scripts (runner)
+run-*.bat
+run-*.ps1
